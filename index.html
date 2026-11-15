@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>스톱워치</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Noto+Sans+KR:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f5f1; --fg: #1b1b1a; --muted: #5f5c55; --line: #dcd8ce;
+    --card: #ffffff; --accent: #e8572a; --stop: #c2372b; --good: #17794d; --bad: #b42a1f;
+    --amber: #f2b33d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141413; --fg: #f1efe8; --muted: #a9a59c; --line: #2f2e2a;
+            --card: #1f1f1d; --accent: #ff6a3d; --stop: #ff5a4d; --good: #3fbf86; --bad: #ff6b5e; }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { -webkit-tap-highlight-color: transparent; }
+  body {
+    min-height: 100vh; background: var(--bg); color: var(--fg);
+    font-family: "Noto Sans KR", system-ui, sans-serif;
+    display: flex; justify-content: center;
+    padding: 28px 16px calc(120px + env(safe-area-inset-bottom));
+  }
+  main { width: 100%; max-width: 520px; }
+  h1 { font-size: 13px; font-weight: 700; letter-spacing: .14em; color: var(--muted); text-align: center; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+  /* ---- 시계 ---- */
+  .ring { position: relative; width: min(340px, 84vw); aspect-ratio: 1; margin: 18px auto 18px; }
+  .ring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .ring svg.progress { transform: rotate(-90deg); }
+  .ring .progress circle { fill: none; stroke-width: 5; }
+  .ring .track { stroke: var(--line); }
+  .ring .prog { stroke: var(--accent); stroke-linecap: round; }
+  .paused .ring .prog { stroke: var(--amber); }
+  .readout {
+    position: absolute; left: 50%; top: 61%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center;
+    padding: 6px 18px 10px; border-radius: 16px; white-space: nowrap;
+    background: #111110; color: #ffffff;
+    box-shadow: 0 4px 18px rgba(0,0,0,.3);
+  }
+  .status { font-size: 12px; font-weight: 700; letter-spacing: .04em; color: #c9c5bb; display: flex; align-items: center; gap: 6px; }
+  .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #8f8c84; }
+  .running .status { color: #7fe0ae; } .running .status::before { background: #3fd68a; }
+  .paused .status { color: var(--amber); } .paused .status::before { background: var(--amber); }
+  #time { font-size: clamp(36px, 11vw, 54px); font-weight: 700; letter-spacing: -.03em; line-height: 1.1; }
+  #time .cs { font-size: .72em; color: #d8d4ca; }
+
+  /* ---- 직전 랩 ---- */
+  .last {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 12px 16px; display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 2px 12px;
+  }
+  .last .label { font-size: 13px; font-weight: 600; color: var(--muted); grid-column: 1 / -1; }
+  .last .value { font-size: 34px; font-weight: 700; line-height: 1.1; }
+  .last .delta { font-size: 18px; font-weight: 700; text-align: right; }
+  .last .meta { font-size: 13px; color: var(--muted); grid-column: 1 / -1; }
+  .delta.up { color: var(--bad); } .delta.down { color: var(--good); }
+  .last .placeholder { grid-column: 1 / -1; font-size: 14px; color: var(--muted); padding: 6px 0; }
+
+  /* ---- 랩 표 ---- */
+  .laps { margin-top: 20px; }
+  .laps-head, .lap {
+    display: grid; grid-template-columns: 40px 1fr 74px 1fr; gap: 6px; padding: 11px 6px; align-items: center;
+  }
+  .laps-head { font-size: 12px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .lap { font-size: 15px; border-bottom: 1px solid var(--line); }
+  .lap span:not(:first-child), .laps-head span:not(:first-child) { text-align: right; }
+  .lap .d.up { color: var(--bad); } .lap .d.down { color: var(--good); }
+  .lap.best .lt { color: var(--good); font-weight: 700; } .lap.worst .lt { color: var(--bad); font-weight: 700; }
+  .lap.current { color: var(--muted); }
+  .avg { display: flex; justify-content: space-between; padding: 11px 6px; font-size: 14px; color: var(--muted); }
+  .empty { text-align: center; color: var(--muted); font-size: 14px; padding: 20px 0; }
+  .tools { display: flex; justify-content: flex-end; margin-top: 8px; }
+  .tools button {
+    font: inherit; font-size: 14px; min-height: 44px; padding: 0 18px; border-radius: 22px; cursor: pointer;
+    border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  }
+  .hint { text-align: center; font-size: 12px; color: var(--muted); margin-top: 18px; }
+  kbd { font-family: "JetBrains Mono", monospace; font-size: 11px; padding: 1px 6px;
+        border: 1px solid var(--line); border-radius: 4px; background: var(--card); }
+  @media (hover: none) { .hint { display: none; } }
+
+  /* ---- 하단 고정 버튼 ---- */
+  .controls {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, var(--bg) 70%, transparent);
+    display: flex; justify-content: center;
+  }
+  .controls .inner { width: 100%; max-width: 520px; display: flex; gap: 12px; }
+  .controls button {
+    position: relative; overflow: hidden; flex: 1; height: 76px; border-radius: 20px;
+    font: inherit; font-size: 21px; font-weight: 700; cursor: pointer; border: none;
+    touch-action: manipulation; user-select: none; -webkit-user-select: none;
+    transition: transform .06s, flex-grow .2s;
+  }
+  .controls button:active { transform: scale(.97); }
+  .controls button:disabled { opacity: .35; cursor: default; }
+  .controls button small { display: block; font-size: 12px; font-weight: 600; opacity: .8; }
+  #mainBtn { background: var(--accent); color: #fff; }
+  .running #mainBtn { background: var(--stop); flex: 1; }
+  .running #subBtn { flex: 2; font-size: 26px; }
+  .tag { display: inline-block; margin-left: 4px; padding: 1px 5px; border-radius: 4px; font-family: "Noto Sans KR", sans-serif;
+         font-size: 10px; font-weight: 700; color: #fff; vertical-align: 2px; }
+  .best .tag { background: var(--good); } .worst .tag { background: var(--bad); }
+  .laps-head, .lap { grid-template-columns: 84px 1fr 70px 1fr !important; }
+  #subBtn { background: var(--fg); color: var(--bg); }
+  #subBtn.reset { background: var(--card); color: var(--fg); border: 2px solid var(--line); }
+  #subBtn .fill { position: absolute; inset: 0; background: var(--stop); opacity: .25; transform: scaleX(0); transform-origin: left; }
+  #subBtn.holding .fill { transform: scaleX(1); transition: transform .6s linear; }
+</style>
+</head>
+<body>
+<main id="app" class="idle">
+  <h1>STOPWATCH</h1>
+
+  <div class="ring">
+    <svg class="art" viewBox="0 0 200 200" aria-hidden="true">
+      <defs><clipPath id="clip"><circle cx="100" cy="100" r="91"/></clipPath></defs>
+      <g clip-path="url(#clip)" stroke="#1b1b1a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+        <rect x="0" y="0" width="100" height="200" fill="#e9b949" stroke="none"/>
+        <rect x="100" y="0" width="100" height="200" fill="#3d6fa8" stroke="none"/>
+        <polygon points="0,135 72,200 0,200" fill="#c8553d"/>
+        <polygon points="200,35 145,0 200,0" fill="#2a3f63"/>
+        <polygon points="160,200 200,150 200,200" fill="#e9b949"/>
+        <path d="M50 74 L68 28 L118 16 L152 38 L148 80 L122 52 L84 50 Z" fill="#26201c"/>
+        <polygon points="84,164 116,168 122,200 78,200" fill="#d98c6f"/>
+        <polygon points="58,74 100,54 100,170 74,160 54,120" fill="#f0b8a0"/>
+        <polygon points="100,54 140,68 146,100 164,114 146,122 150,150 128,172 100,170" fill="#a9c7a0"/>
+        <circle cx="72" cy="132" r="8" fill="#e07a5f" stroke="none" opacity=".85"/>
+        <path d="M64 86 Q80 74 96 84" fill="none"/>
+        <path d="M66 98 Q80 85 94 98 Q80 108 66 98 Z" fill="#fff"/>
+        <circle cx="81" cy="97" r="4.5" fill="#1b1b1a" stroke="none"/>
+        <path d="M116 76 L142 69" fill="none"/>
+        <path d="M118 88 L138 81 L133 94 Z" fill="#fff"/>
+        <circle cx="131" cy="87" r="3" fill="#1b1b1a" stroke="none"/>
+        <path d="M100 92 L91 128 L104 131" fill="none"/>
+        <path d="M82 147 Q94 140 104 147 Q94 154 82 147 Z" fill="#c8553d"/>
+        <path d="M104 147 L132 140 L127 152 Z" fill="#c8553d"/>
+        <path d="M150 150 L176 162" fill="none"/>
+      </g>
+    </svg>
+    <svg class="progress" viewBox="0 0 200 200" aria-hidden="true">
+      <circle class="track" cx="100" cy="100" r="94"/>
+      <circle class="prog" id="prog" cx="100" cy="100" r="94"/>
+    </svg>
+    <div class="readout">
+      <div class="status" id="status">대기</div>
+      <div id="time" class="mono">0<span class="cs">.00</span></div>
+    </div>
+  </div>
+
+  <section class="last" id="last" aria-live="polite"></section>
+
+  <section class="laps">
+    <div class="laps-head"><span>랩</span><span>랩 타임</span><span>직전 대비</span><span>스플릿(누적)</span></div>
+    <div id="lapList"></div>
+    <div class="tools" id="tools" hidden><button id="copyBtn">기록 복사</button></div>
+  </section>
+
+  <p class="hint"><kbd>Space</kbd> 시작·정지 · <kbd>L</kbd> 랩 · <kbd>R</kbd> 초기화</p>
+</main>
+
+<nav class="controls">
+  <div class="inner">
+    <button id="subBtn"><span class="fill"></span><span class="lbl">랩</span></button>
+    <button id="mainBtn">시작</button>
+  </div>
+</nav>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const app = $('app'), timeEl = $('time'), statusEl = $('status'), prog = $('prog');
+  const mainBtn = $('mainBtn'), subBtn = $('subBtn'), subLbl = subBtn.querySelector('.lbl');
+  const lapList = $('lapList'), lastEl = $('last'), tools = $('tools'), copyBtn = $('copyBtn');
+  const KEY = 'stopwatch-state-v2';
+
+  const C = 2 * Math.PI * 94;
+  prog.style.strokeDasharray = C;
+
+  // 새로고침해도 이어지도록 고해상도 '벽시계' 시간을 사용
+  const now = () => performance.timeOrigin + performance.now();
+  let running = false, startAt = 0, elapsed = 0, laps = [], raf = null;
+
+  const total = () => running ? elapsed + (now() - startAt) : elapsed;
+
+  // 육상 기록 표기: 58.21 / 4:05.32 / 1:02:03.45 (1/100초 버림)
+  function fmt(ms, html) {
+    ms = Math.max(0, ms);
+    const cs = Math.floor(ms / 10) % 100, s = Math.floor(ms / 1000) % 60;
+    const m = Math.floor(ms / 60000) % 60, h = Math.floor(ms / 3600000);
+    const p = n => String(n).padStart(2, '0');
+    const head = h ? `${h}:${p(m)}:${p(s)}` : m ? `${m}:${p(s)}` : `${s}`;
+    return html ? `${head}<span class="cs">.${p(cs)}</span>` : `${head}.${p(cs)}`;
+  }
+  function fmtDelta(ms) {
+    const sign = ms > 0 ? '+' : ms < 0 ? '−' : '±';
+    return sign + fmt(Math.abs(ms));
+  }
+  const splits = () => laps.map((v, i) => v - (i ? laps[i - 1] : 0));
+
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify({ running, startAt, elapsed, laps })); } catch {}
+  }
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && Array.isArray(s.laps)) ({ running, startAt, elapsed, laps } = s);
+    } catch {}
+  }
+
+  // 화면 꺼짐 방지
+  let wakeLock = null;
+  async function keepAwake(on) {
+    try {
+      if (on && !wakeLock && 'wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        wakeLock.addEventListener('release', () => { wakeLock = null; });
+      } else if (!on && wakeLock) { await wakeLock.release(); wakeLock = null; }
+    } catch {}
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && running) keepAwake(true); });
+  const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch {} };
+
+  function render() {
+    const t = total();
+    timeEl.innerHTML = fmt(t, true);
+    prog.style.strokeDashoffset = C * (1 - (t % 60000) / 60000);
+    const cur = lapList.querySelector('.lap.current');
+    if (cur) {
+      const last = laps[laps.length - 1] || 0;
+      cur.children[1].textContent = fmt(t - last);
+      cur.children[3].textContent = fmt(t);
+    }
+  }
+  function loop() { render(); raf = requestAnimationFrame(loop); }
+
+  function renderLaps() {
+    const sp = splits(), t = total();
+    if (!laps.length) {
+      lapList.innerHTML = '<p class="empty">기록된 랩이 없습니다</p>';
+      lastEl.innerHTML = '<p class="placeholder">측정 중 <b>랩</b>을 누르면 직전 랩이 여기에 크게 표시됩니다</p>';
+      tools.hidden = true;
+      return;
+    }
+    let best = -1, worst = -1;
+    if (sp.length >= 2) { best = sp.indexOf(Math.min(...sp)); worst = sp.indexOf(Math.max(...sp)); }
+    const last = laps[laps.length - 1];
+    let html = `<div class="lap current mono"><span>${laps.length + 1}</span><span>${fmt(t - last)}</span><span></span><span>${fmt(t)}</span></div>`;
+    for (let i = sp.length - 1; i >= 0; i--) {
+      const cls = i === best ? ' best' : i === worst ? ' worst' : '';
+      const d = i ? sp[i] - sp[i - 1] : null;
+      const dc = d === null ? '' : d > 0 ? 'up' : d < 0 ? 'down' : '';
+      const tag = i === best ? '<span class="tag">가장 빠름</span>' : i === worst ? '<span class="tag">가장 느림</span>' : '';
+      html += `<div class="lap mono${cls}"><span>${i + 1}${tag}</span><span class="lt">${fmt(sp[i])}</span>` +
+              `<span class="d ${dc}">${d === null ? '—' : fmtDelta(d)}</span><span>${fmt(laps[i])}</span></div>`;
+    }
+    const avg = last / laps.length;
+    html += `<div class="avg"><span>평균 랩 (${laps.length}개)</span><span class="mono">${fmt(avg)}</span></div>`;
+    lapList.innerHTML = html;
+    tools.hidden = false;
+
+    const n = sp.length, lt = sp[n - 1], d = n > 1 ? lt - sp[n - 2] : null;
+    lastEl.innerHTML =
+      `<span class="label">직전 랩 · 랩 ${n}</span>` +
+      `<span class="value mono">${fmt(lt)}</span>` +
+      `<span class="delta mono ${d === null ? '' : d > 0 ? 'up' : 'down'}">${d === null ? '' : fmtDelta(d)}</span>` +
+      `<span class="meta">스플릿 ${fmt(last)} · 평균 ${fmt(avg)}</span>`;
+  }
+
+  function updateUI() {
+    const t = total();
+    app.className = running ? 'running' : t > 0 ? 'paused' : 'idle';
+    document.body.className = app.className;
+    statusEl.textContent = running ? '측정 중' : t > 0 ? '일시정지' : '대기';
+    mainBtn.textContent = running ? '정지' : t > 0 ? '계속' : '시작';
+    if (running) {
+      subBtn.classList.remove('reset'); subBtn.disabled = false;
+      subLbl.innerHTML = '랩';
+    } else if (t > 0) {
+      subBtn.classList.add('reset'); subBtn.disabled = false;
+      subLbl.innerHTML = '초기화<small>길게 누르기</small>';
+    } else {
+      subBtn.classList.remove('reset'); subBtn.disabled = true;
+      subLbl.innerHTML = '랩';
+    }
+  }
+
+  function toggle() {
+    if (running) {
+      elapsed += now() - startAt; running = false;
+      cancelAnimationFrame(raf); keepAwake(false);
+    } else {
+      startAt = now(); running = true; loop(); keepAwake(true);
+    }
+    buzz(20); save(); render(); renderLaps(); updateUI();
+  }
+  const MIN_LAP = 300; // 0.3초 안에 다시 눌린 랩은 손가락이 두 번 닿은 것으로 보고 무시
+  function lap() {
+    if (!running) return;
+    const t = total();
+    if (t - (laps[laps.length - 1] || 0) < MIN_LAP) return;
+    laps.push(t);
+    buzz(35); save(); renderLaps(); render();
+  }
+  function reset() {
+    if (running) return;
+    elapsed = 0; laps = [];
+    buzz([20, 40, 20]); save(); render(); renderLaps(); updateUI();
+  }
+
+  // 버튼
+  // 손가락이 닿는 순간(pointerdown)에 기록 — 뗄 때까지의 지연을 없앰.
+  // 키보드로 누른 버튼(click, detail 0)만 click에서 처리.
+  mainBtn.addEventListener('pointerdown', e => { if (e.button === 0) toggle(); });
+  mainBtn.addEventListener('click', e => { if (e.detail === 0) toggle(); });
+  let holdTimer = null;
+  const cancelHold = () => { clearTimeout(holdTimer); holdTimer = null; subBtn.classList.remove('holding'); };
+  subBtn.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    if (running) { lap(); return; }
+    if (!subBtn.classList.contains('reset')) return;
+    subBtn.classList.add('holding');
+    holdTimer = setTimeout(() => { cancelHold(); reset(); }, 600);
+  });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => subBtn.addEventListener(ev, cancelHold));
+  subBtn.addEventListener('click', e => { if (e.detail === 0 && running) lap(); });
+  subBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+  copyBtn.addEventListener('click', async () => {
+    const sp = splits();
+    const lines = ['랩\t랩 타임\t직전 대비\t스플릿'];
+    sp.forEach((v, i) => lines.push(`${i + 1}\t${fmt(v)}\t${i ? fmtDelta(v - sp[i - 1]) : ''}\t${fmt(laps[i])}`));
+    lines.push(`평균\t${fmt(laps[laps.length - 1] / laps.length)}`, `총 기록\t${fmt(total())}`);
+    try { await navigator.clipboard.writeText(lines.join('\n')); copyBtn.textContent = '복사됨 ✓'; }
+    catch { copyBtn.textContent = '복사 실패'; }
+    setTimeout(() => copyBtn.textContent = '기록 복사', 1500);
+  });
+
+  // 키보드: 한글 입력 상태에서도 동작하도록 물리 키(code) 기준
+  document.addEventListener('keydown', e => {
+    if (e.repeat || e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.target.closest('button') && (e.code === 'Space' || e.code === 'Enter')) return; // 버튼 기본 동작에 맡김
+    if (e.code === 'Space') { e.preventDefault(); toggle(); }
+    else if (e.code === 'KeyL') lap();
+    else if (e.code === 'KeyR') reset();
+  });
+
+  load();
+  if (running) { loop(); keepAwake(true); }
+  render(); renderLaps(); updateUI();
+})();
+</script>
+</body>
+</html>
